@@ -75,21 +75,6 @@ Use the hamburger menu to toggle the sidebar.
 
 Swipe right from the left edge to open the sidebar.
 
-Project Structure
-context-assistant/
-│
-├─ frontend/       # React + TypeScript + Tailwind UI
-│  ├─ src/
-│  │  ├─ components/     # PeopleList, PersonDetails, ConversationInput, EditableList
-│  │  ├─ types/          # TypeScript types
-│  │  └─ App.tsx         # Main app entry
-│
-├─ backend/        # Node + Express API
-│  └─ index.ts      # API endpoints for message extraction
-│
-├─ package.json
-└─ README.md
-
 Technologies Used
 
 Frontend
