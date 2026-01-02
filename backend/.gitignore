@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+
+# Keep config files
+!*.config.js
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
