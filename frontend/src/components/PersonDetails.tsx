@@ -1,4 +1,11 @@
-import { Heart, Calendar, MapPin, FileText, Sparkles, Menu } from "lucide-react";
+import {
+  Heart,
+  Calendar,
+  MapPin,
+  FileText,
+  Sparkles,
+  Menu,
+} from "lucide-react";
 import type { Person, Message } from "../types/person";
 import EditableList from "./EditableList";
 
@@ -35,7 +42,9 @@ export default function PersonDetails({
         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
           <Sparkles className="w-8 h-8 text-gray-400" />
         </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">No person selected</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          No person selected
+        </h3>
         <p className="text-sm text-gray-500 max-w-sm">
           Select a person from the sidebar to view and manage their context
         </p>
@@ -60,15 +69,17 @@ export default function PersonDetails({
           >
             <Menu className="w-6 h-6 text-indigo-700" />
           </button>
-          <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-linear-to-br from-indigo-400 to-purple-500 flex items-center justify-center shrink-0">
             <span className="text-white text-base md:text-lg font-semibold">
               {person.name.charAt(0).toUpperCase()}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg md:text-xl font-semibold text-gray-900 truncate">{person.name}</h2>
+            <h2 className="text-lg md:text-xl font-semibold text-gray-900 truncate">
+              {person.name}
+            </h2>
             <p className="text-xs md:text-sm text-gray-500">
-              {totalItems} {totalItems === 1 ? 'item' : 'items'} tracked
+              {totalItems} {totalItems === 1 ? "item" : "items"} tracked
             </p>
           </div>
         </div>
