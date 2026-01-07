@@ -1,6 +1,10 @@
 import express from "express";
 import cors from "cors";
-import { extractFactsFromText, transformToFrontendFormat } from "./services/ai.service.js";
+import {
+  extractFactsFromText,
+  transformToFrontendFormat,
+  checkOllamaAvailability
+} from "./services/ai.service.js";
 
 interface ExtractRequest {
   text: string;
@@ -62,7 +66,24 @@ app.post("/extract", async (req, res) => {
 });
 
 const PORT = Number(process.env.PORT) || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Extraction endpoint: POST http://localhost:${PORT}/extract`);
+  console.log("");
+
+  // Check Ollama availability on startup
+  const ollamaStatus = await checkOllamaAvailability();
+  if (ollamaStatus.available) {
+    console.log("✅ Ollama is running and ready");
+  } else {
+    console.log("⚠️  WARNING: Ollama is not running!");
+    console.log(`   ${ollamaStatus.message}`);
+    console.log("");
+    console.log("   To fix this:");
+    console.log("   1. Install Ollama: https://ollama.com");
+    console.log("   2. Start Ollama: ollama serve");
+    console.log("   3. Pull model: ollama pull deepseek-r1:1.5b");
+    console.log("");
+    console.log("   AI extraction will not work until Ollama is running.");
+  }
 });

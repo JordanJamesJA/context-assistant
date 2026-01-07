@@ -42,6 +42,34 @@
 
 ---
 
+## Prerequisites
+
+### Ollama Setup (Required for AI Extraction)
+
+The backend uses **Ollama** with the **DeepSeek-R1:1.5b** model for intelligent message extraction.
+
+1. **Install Ollama:**
+   - macOS/Linux: `curl -fsSL https://ollama.com/install.sh | sh`
+   - Windows: Download from [ollama.com](https://ollama.com)
+
+2. **Start Ollama:**
+   ```bash
+   ollama serve
+   ```
+
+3. **Pull the DeepSeek model:**
+   ```bash
+   ollama pull deepseek-r1:1.5b
+   ```
+
+4. **Verify it's running:**
+   ```bash
+   curl http://localhost:11434
+   ```
+   You should see: `Ollama is running`
+
+---
+
 ## Installation
 
 ### Backend
@@ -49,15 +77,49 @@
 ```bash
 cd backend
 npm install
+npm run build
 ```
+
 ### Frontend
 
 ```bash
-cd backend
+cd frontend
 npm install
 ```
 
-Usage
+---
+
+## Running the App
+
+### Start Backend (Terminal 1)
+
+Make sure Ollama is running first!
+
+```bash
+cd backend
+npm start
+# or for development with auto-reload:
+# npm run dev
+```
+
+You should see:
+```
+🚀 Server running on port 5000
+📡 Extraction endpoint: POST http://localhost:5000/extract
+```
+
+### Start Frontend (Terminal 2)
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open http://localhost:5173 in your browser.
+
+---
+
+## Usage
 
 Open the app in a browser.
 

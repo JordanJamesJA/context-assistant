@@ -37,29 +37,61 @@ Extract ALL facts from the text. Be thorough.
 `;
 
 export async function extractFactsFromText(text: string): Promise<AIResult> {
-  const response = await ollama.chat({
-    model: "deepseek-r1:1.5b",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: text },
-    ],
-    format: "json",
-  });
-
   try {
-    const parsed: AIResult = JSON.parse(response.message.content);
+    const response = await ollama.chat({
+      model: "deepseek-r1:1.5b",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: text },
+      ],
+      format: "json",
+    });
 
-    // Ensure payload and facts exist
-    if (!parsed.payload) {
-      parsed.payload = { facts: [] };
-    }
-    if (!Array.isArray(parsed.payload.facts)) {
-      parsed.payload.facts = [];
-    }
+    try {
+      const parsed: AIResult = JSON.parse(response.message.content);
 
-    return parsed;
+      // Ensure payload and facts exist
+      if (!parsed.payload) {
+        parsed.payload = { facts: [] };
+      }
+      if (!Array.isArray(parsed.payload.facts)) {
+        parsed.payload.facts = [];
+      }
+
+      return parsed;
+    } catch (err) {
+      throw new Error("AI returned invalid JSON");
+    }
+  } catch (err: any) {
+    // Provide user-friendly error messages
+    if (err.cause?.code === "ECONNREFUSED") {
+      throw new Error(
+        "Ollama is not running. Please start Ollama with 'ollama serve' and ensure the deepseek-r1:1.5b model is available."
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * Check if Ollama is available
+ */
+export async function checkOllamaAvailability(): Promise<{
+  available: boolean;
+  message: string;
+}> {
+  try {
+    const response = await fetch("http://localhost:11434");
+    if (response.ok) {
+      return { available: true, message: "Ollama is running" };
+    }
+    return { available: false, message: "Ollama responded but with error" };
   } catch (err) {
-    throw new Error("AI returned invalid JSON");
+    return {
+      available: false,
+      message:
+        "Ollama is not running. Please start it with: ollama serve",
+    };
   }
 }
 
