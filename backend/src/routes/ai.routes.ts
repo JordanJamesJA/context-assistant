@@ -1,17 +1,30 @@
 import { Router } from "express";
-import { extractFactsFromText } from "../services/ai.service.js";
+import {
+  extractFactsFromText,
+  transformToFrontendFormat,
+} from "../services/ai.service.js";
 
 const router = Router();
-
-router.post("/extract-facts", async (req, res) => {
+router.post("/extract", async (req, res) => {
   const { text } = req.body;
-  if (!text) return res.status(400).json({ error: "No text provided" });
+
+  if (!text || typeof text !== "string") {
+    return res.status(400).json({ error: "No text provided" });
+  }
 
   try {
     const aiResult = await extractFactsFromText(text);
-    res.json(aiResult);
+    const frontendData = transformToFrontendFormat(aiResult);
+    res.json(frontendData);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error("Extraction error:", err);
+    res.status(500).json({
+      error: err.message || "Failed to extract facts",
+      interests: [],
+      importantDates: [],
+      places: [],
+      notes: [],
+    });
   }
 });
 
