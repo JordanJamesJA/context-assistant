@@ -73,53 +73,70 @@ function App() {
 
     setMessages((prev) => [...prev, message]);
 
-    const response = await fetch("http://localhost:5000/extract", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ text, messageId: message.id }),
-    });
+    try {
+      const response = await fetch("http://localhost:5000/extract", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text, messageId: message.id }),
+      });
 
-    const data = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
+        console.error("Backend error:", errorData);
+        return;
+      }
 
-    const newInterests: InfoItem[] = data.interests.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+      const data = await response.json();
 
-    const newDates: InfoItem[] = data.importantDates.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+      // Safely extract arrays with defaults to prevent .map errors
+      const safeInterests = Array.isArray(data?.interests) ? data.interests : [];
+      const safeDates = Array.isArray(data?.importantDates) ? data.importantDates : [];
+      const safePlaces = Array.isArray(data?.places) ? data.places : [];
+      const safeNotes = Array.isArray(data?.notes) ? data.notes : [];
 
-    const newPlaces: InfoItem[] = data.places.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+      const newInterests: InfoItem[] = safeInterests.map((item: { value: string }) => ({
+        id: generateId(),
+        value: item.value,
+        messageId: message.id,
+      }));
 
-    const newNotes: InfoItem[] = data.notes.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+      const newDates: InfoItem[] = safeDates.map((item: { value: string }) => ({
+        id: generateId(),
+        value: item.value,
+        messageId: message.id,
+      }));
 
-    setPeople((prevPeople) =>
-      prevPeople.map((person) =>
-        person.id === selectedPersonId
-          ? {
-              ...person,
-              interests: deduplicateItems([...person.interests, ...newInterests]),
-              importantDates: deduplicateItems([...person.importantDates, ...newDates]),
-              places: deduplicateItems([...person.places, ...newPlaces]),
-              notes: deduplicateItems([...person.notes, ...newNotes]),
-            }
-          : person
-      )
-    );
+      const newPlaces: InfoItem[] = safePlaces.map((item: { value: string }) => ({
+        id: generateId(),
+        value: item.value,
+        messageId: message.id,
+      }));
+
+      const newNotes: InfoItem[] = safeNotes.map((item: { value: string }) => ({
+        id: generateId(),
+        value: item.value,
+        messageId: message.id,
+      }));
+
+      setPeople((prevPeople) =>
+        prevPeople.map((person) =>
+          person.id === selectedPersonId
+            ? {
+                ...person,
+                interests: deduplicateItems([...person.interests, ...newInterests]),
+                importantDates: deduplicateItems([...person.importantDates, ...newDates]),
+                places: deduplicateItems([...person.places, ...newPlaces]),
+                notes: deduplicateItems([...person.notes, ...newNotes]),
+              }
+            : person
+        )
+      );
+    } catch (error) {
+      console.error("Failed to extract data:", error);
+      // Message is already saved, extraction just failed - user can retry
+    }
   }
 
   function deduplicateItems(items: InfoItem[]): InfoItem[] {

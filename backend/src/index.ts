@@ -1,8 +1,13 @@
 import express from "express";
+import type { Request, Response } from "express";
 import cors from "cors";
 
+/**
+ * API Request/Response Types
+ */
 interface ExtractRequest {
   text: string;
+  messageId?: string; // Optional for future use
 }
 
 interface ExtractedItem {
@@ -14,6 +19,11 @@ interface ExtractResponse {
   importantDates: ExtractedItem[];
   places: ExtractedItem[];
   notes: ExtractedItem[];
+}
+
+interface ErrorResponse {
+  error: string;
+  message: string;
 }
 
 const PATTERNS = {
@@ -65,85 +75,112 @@ const KEYWORDS = {
   ],
 };
 
-function extractStructuredData(text: string): ExtractResponse {
-  const normalized = text.toLowerCase().trim();
+/**
+ * Helper: Clean extracted text values
+ */
+function cleanExtractedValue(value: string): string {
+  return value
+    .replace(/[,;.!?]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  const extract = (patterns: RegExp | RegExp[], keywords: string[]): ExtractedItem[] => {
-    const results = new Map<string, string>();
-    const patternArray = Array.isArray(patterns) ? patterns : [patterns];
+/**
+ * Helper: Filter out generic/filler words
+ */
+function filterGenericWords(items: ExtractedItem[], genericWords: string[]): ExtractedItem[] {
+  const genericSet = new Set(genericWords.map(w => w.toLowerCase()));
+  return items.filter(item => !genericSet.has(item.value.toLowerCase()));
+}
 
-    for (const pattern of patternArray) {
-      const matches = text.matchAll(pattern);
-      for (const match of matches) {
-        const captured = match[1]?.trim();
-        if (captured && captured.length > 1) {
-          const cleaned = cleanExtractedValue(captured);
-          if (cleaned) {
-            const key = cleaned.toLowerCase();
-            if (!results.has(key)) {
-              results.set(key, cleaned);
-            }
+/**
+ * Helper: Remove substring duplicates (e.g., "sushi" contained in "sushi restaurant")
+ */
+function removeSubstringDuplicates(items: ExtractedItem[]): ExtractedItem[] {
+  if (items.length <= 1) return items;
+
+  const sorted = [...items].sort((a, b) => a.value.length - b.value.length);
+  const result: ExtractedItem[] = [];
+
+  for (const item of sorted) {
+    const itemLower = item.value.toLowerCase().trim();
+
+    const hasSubstring = result.some(existing => {
+      const existingLower = existing.value.toLowerCase().trim();
+      return existingLower !== itemLower && itemLower.includes(existingLower);
+    });
+
+    if (!hasSubstring && !result.some(r => r.value.toLowerCase() === itemLower)) {
+      result.push(item);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Helper: Extract items using patterns and keywords
+ */
+function extractItems(
+  text: string,
+  normalized: string,
+  patterns: RegExp[],
+  keywords: string[]
+): ExtractedItem[] {
+  const results = new Map<string, string>();
+
+  // Pattern-based extraction
+  for (const pattern of patterns) {
+    const matches = text.matchAll(pattern);
+    for (const match of matches) {
+      const captured = match[1]?.trim();
+      if (captured && captured.length > 1) {
+        const cleaned = cleanExtractedValue(captured);
+        if (cleaned) {
+          const key = cleaned.toLowerCase();
+          if (!results.has(key)) {
+            results.set(key, cleaned);
           }
         }
       }
     }
+  }
 
-    for (const keyword of keywords) {
-      const keywordLower = keyword.toLowerCase();
-      const wordBoundaryPattern = new RegExp(`\\b${keywordLower.replace(/\s+/g, '\\s+')}\\b`, 'i');
-      if (wordBoundaryPattern.test(normalized)) {
-        const key = keywordLower;
-        if (!results.has(key)) {
-          const formatted = keyword
-            .split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-          results.set(key, formatted);
-        }
+  // Keyword-based extraction
+  for (const keyword of keywords) {
+    const keywordLower = keyword.toLowerCase();
+    const wordBoundaryPattern = new RegExp(`\\b${keywordLower.replace(/\s+/g, '\\s+')}\\b`, 'i');
+    if (wordBoundaryPattern.test(normalized)) {
+      const key = keywordLower;
+      if (!results.has(key)) {
+        const formatted = keyword
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        results.set(key, formatted);
       }
     }
+  }
 
-    return Array.from(results.values()).map(value => ({ value }));
-  };
+  return Array.from(results.values()).map(value => ({ value }));
+}
 
-  const cleanExtractedValue = (value: string): string => {
-    return value
-      .replace(/[,;.!?]+$/, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
+/**
+ * Main extraction function: Transform raw text into structured data
+ * Always returns all four arrays (even if empty) to prevent frontend errors
+ */
+function extractStructuredData(text: string): ExtractResponse {
+  // Input validation
+  if (!text || typeof text !== 'string') {
+    return {
+      interests: [],
+      importantDates: [],
+      places: [],
+      notes: [],
+    };
+  }
 
-  const filterGenericWords = (items: ExtractedItem[], genericWords: string[]): ExtractedItem[] => {
-    const genericSet = new Set(genericWords.map(w => w.toLowerCase()));
-    return items.filter(item => !genericSet.has(item.value.toLowerCase()));
-  };
-
-  const removeSubstringDuplicates = (items: ExtractedItem[]): ExtractedItem[] => {
-    if (items.length <= 1) return items;
-
-    const sorted = [...items].sort((a, b) => a.value.length - b.value.length);
-    const result: ExtractedItem[] = [];
-
-    for (const item of sorted) {
-      const itemLower = item.value.toLowerCase().trim();
-
-      const isSuperstring = result.some(existing => {
-        const existingLower = existing.value.toLowerCase().trim();
-        return itemLower.includes(existingLower);
-      });
-
-      const hasSubstring = result.some(existing => {
-        const existingLower = existing.value.toLowerCase().trim();
-        return existingLower !== itemLower && itemLower.includes(existingLower);
-      });
-
-      if (!hasSubstring && !result.some(r => r.value.toLowerCase() === itemLower)) {
-        result.push(item);
-      }
-    }
-
-    return result;
-  };
+  const normalized = text.toLowerCase().trim();
 
   const GENERIC_FILTERS = {
     places: [
@@ -153,10 +190,12 @@ function extractStructuredData(text: string): ExtractResponse {
     interests: ['a lot', 'so much', 'too', 'really', 'very'],
   };
 
-  const rawInterests = extract(PATTERNS.interests, KEYWORDS.interests);
-  const rawDates = extract(PATTERNS.importantDates, KEYWORDS.importantDates);
-  const rawPlaces = extract(PATTERNS.places, KEYWORDS.places);
+  // Extract raw data
+  const rawInterests = extractItems(text, normalized, PATTERNS.interests, KEYWORDS.interests);
+  const rawDates = extractItems(text, normalized, PATTERNS.importantDates, KEYWORDS.importantDates);
+  const rawPlaces = extractItems(text, normalized, PATTERNS.places, KEYWORDS.places);
 
+  // Clean and deduplicate
   const interests = removeSubstringDuplicates(
     filterGenericWords(rawInterests, GENERIC_FILTERS.interests)
   );
@@ -165,6 +204,7 @@ function extractStructuredData(text: string): ExtractResponse {
     filterGenericWords(rawPlaces, GENERIC_FILTERS.places)
   );
 
+  // Always return the original text as a note
   return {
     interests,
     importantDates,
@@ -177,26 +217,50 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/ping", (_req, res) => {
+app.get("/ping", (_req: Request, res: Response) => {
   res.json({
     success: true,
     timestamp: new Date().toISOString(),
   });
 });
 
-app.post("/extract", (req, res) => {
-  const { text } = req.body as ExtractRequest;
+app.post("/extract", (req: Request, res: Response) => {
+  try {
+    const { text } = req.body as ExtractRequest;
 
-  if (!text || typeof text !== "string" || text.trim().length === 0) {
-    return res.status(400).json({
-      error: "ValidationError",
-      message: "Missing or invalid 'text' field in request body",
-    });
+    // Validate input
+    if (!text || typeof text !== "string" || text.trim().length === 0) {
+      const errorResponse: ErrorResponse = {
+        error: "ValidationError",
+        message: "Missing or invalid 'text' field in request body",
+      };
+      return res.status(400).json(errorResponse);
+    }
+
+    // Extract and transform data
+    const data: ExtractResponse = extractStructuredData(text);
+
+    // Ensure response always has all required arrays (safety check)
+    const safeResponse: ExtractResponse = {
+      interests: Array.isArray(data.interests) ? data.interests : [],
+      importantDates: Array.isArray(data.importantDates) ? data.importantDates : [],
+      places: Array.isArray(data.places) ? data.places : [],
+      notes: Array.isArray(data.notes) ? data.notes : [],
+    };
+
+    res.json(safeResponse);
+  } catch (error) {
+    console.error("Extraction error:", error);
+    const errorResponse: ErrorResponse = {
+      error: "InternalServerError",
+      message: "Failed to process text extraction",
+    };
+    res.status(500).json(errorResponse);
   }
-
-  const data = extractStructuredData(text);
-  res.json(data);
 });
 
 const PORT = Number(process.env.PORT) || 5000;
-app.listen(PORT);
+app.listen(PORT, () => {
+  console.log(`✓ Backend server running on http://localhost:${PORT}`);
+  console.log(`✓ Extraction endpoint: POST http://localhost:${PORT}/extract`);
+});
