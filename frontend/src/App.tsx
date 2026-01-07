@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import Sidebar from "./components/Sidebar";
-import type { Person, Message, InfoItem, Speaker as SpeakerType } from "./types/person";
+import type {
+  Person,
+  Message,
+  InfoItem,
+  Speaker as SpeakerType,
+} from "./types/person";
 import ConversationInput from "./components/ConversationInput";
 import PersonDetails from "./components/PersonDetails";
 
@@ -38,13 +43,15 @@ function App() {
 
     if (selectedPersonId === personId) {
       const remainingPeople = people.filter((p) => p.id !== personId);
-      setSelectedPersonId(remainingPeople.length > 0 ? remainingPeople[0].id : null);
+      setSelectedPersonId(
+        remainingPeople.length > 0 ? remainingPeople[0].id : null
+      );
     }
   }
 
   function handleDeleteItem(
     itemId: string,
-    itemType: 'interests' | 'importantDates' | 'places' | 'notes'
+    itemType: "interests" | "importantDates" | "places" | "notes"
   ) {
     if (!selectedPersonId) return;
 
@@ -73,53 +80,105 @@ function App() {
 
     setMessages((prev) => [...prev, message]);
 
-    const response = await fetch("http://localhost:5000/extract", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ text, messageId: message.id }),
-    });
+    try {
+      const response = await fetch("http://localhost:5000/extract", {
+        method: "POST",
 
-    const data = await response.json();
+        headers: {
+          "Content-Type": "application/json",
+        },
 
-    const newInterests: InfoItem[] = data.interests.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+        body: JSON.stringify({ text, messageId: message.id }),
+      });
 
-    const newDates: InfoItem[] = data.importantDates.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: "Unknown error" }));
 
-    const newPlaces: InfoItem[] = data.places.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+        console.error("Backend error:", errorData);
 
-    const newNotes: InfoItem[] = data.notes.map((item: { value: string }) => ({
-      id: generateId(),
-      value: item.value,
-      messageId: message.id,
-    }));
+        return;
+      }
 
-    setPeople((prevPeople) =>
-      prevPeople.map((person) =>
-        person.id === selectedPersonId
-          ? {
-              ...person,
-              interests: deduplicateItems([...person.interests, ...newInterests]),
-              importantDates: deduplicateItems([...person.importantDates, ...newDates]),
-              places: deduplicateItems([...person.places, ...newPlaces]),
-              notes: deduplicateItems([...person.notes, ...newNotes]),
-            }
-          : person
-      )
-    );
+      const data = await response.json();
+
+      // Safely extract arrays with defaults to prevent .map errors
+
+      const safeInterests = Array.isArray(data?.interests)
+        ? data.interests
+        : [];
+
+      const safeDates = Array.isArray(data?.importantDates)
+        ? data.importantDates
+        : [];
+
+      const safePlaces = Array.isArray(data?.places) ? data.places : [];
+
+      const safeNotes = Array.isArray(data?.notes) ? data.notes : [];
+
+      const newInterests: InfoItem[] = safeInterests.map(
+        (item: { value: string }) => ({
+          id: generateId(),
+
+          value: item.value,
+
+          messageId: message.id,
+        })
+      );
+
+      const newDates: InfoItem[] = safeDates.map((item: { value: string }) => ({
+        id: generateId(),
+
+        value: item.value,
+
+        messageId: message.id,
+      }));
+
+      const newPlaces: InfoItem[] = safePlaces.map(
+        (item: { value: string }) => ({
+          id: generateId(),
+
+          value: item.value,
+
+          messageId: message.id,
+        })
+      );
+
+      const newNotes: InfoItem[] = safeNotes.map((item: { value: string }) => ({
+        id: generateId(),
+
+        value: item.value,
+
+        messageId: message.id,
+      }));
+
+      setPeople((prevPeople) =>
+        prevPeople.map((person) =>
+          person.id === selectedPersonId
+            ? {
+                ...person,
+
+                interests: deduplicateItems([
+                  ...person.interests,
+                  ...newInterests,
+                ]),
+
+                importantDates: deduplicateItems([
+                  ...person.importantDates,
+                  ...newDates,
+                ]),
+
+                places: deduplicateItems([...person.places, ...newPlaces]),
+
+                notes: deduplicateItems([...person.notes, ...newNotes]),
+              }
+            : person
+        )
+      );
+    } catch (error) {
+      console.error("Failed to extract data:", error);
+    }
   }
 
   function deduplicateItems(items: InfoItem[]): InfoItem[] {
@@ -133,7 +192,7 @@ function App() {
   function updateItem(
     itemId: string,
     newValue: string,
-    itemType: 'interests' | 'importantDates' | 'places' | 'notes'
+    itemType: "interests" | "importantDates" | "places" | "notes"
   ) {
     if (!selectedPersonId) return;
 
@@ -152,35 +211,35 @@ function App() {
   }
 
   function updateInterest(itemId: string, newValue: string) {
-    updateItem(itemId, newValue, 'interests');
+    updateItem(itemId, newValue, "interests");
   }
 
   function updateDate(itemId: string, newValue: string) {
-    updateItem(itemId, newValue, 'importantDates');
+    updateItem(itemId, newValue, "importantDates");
   }
 
   function updatePlace(itemId: string, newValue: string) {
-    updateItem(itemId, newValue, 'places');
+    updateItem(itemId, newValue, "places");
   }
 
   function updateNote(itemId: string, newValue: string) {
-    updateItem(itemId, newValue, 'notes');
+    updateItem(itemId, newValue, "notes");
   }
 
   function deleteInterest(itemId: string) {
-    handleDeleteItem(itemId, 'interests');
+    handleDeleteItem(itemId, "interests");
   }
 
   function deleteDate(itemId: string) {
-    handleDeleteItem(itemId, 'importantDates');
+    handleDeleteItem(itemId, "importantDates");
   }
 
   function deletePlace(itemId: string) {
-    handleDeleteItem(itemId, 'places');
+    handleDeleteItem(itemId, "places");
   }
 
   function deleteNote(itemId: string) {
-    handleDeleteItem(itemId, 'notes');
+    handleDeleteItem(itemId, "notes");
   }
 
   function getMessageById(messageId: string): Message | undefined {
@@ -214,21 +273,27 @@ function App() {
       const deltaX = touch.clientX - touchStartX.current;
       const minSwipeDistance = 50;
 
-      if (!isSidebarOpen && touchStartX.current < 50 && deltaX > minSwipeDistance) {
+      if (
+        !isSidebarOpen &&
+        touchStartX.current < 50 &&
+        deltaX > minSwipeDistance
+      ) {
         setIsSidebarOpen(true);
       }
 
       isDragging.current = false;
     };
 
-    document.addEventListener('touchstart', handleTouchStart, { passive: true });
-    document.addEventListener('touchmove', handleTouchMove, { passive: true });
-    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+    document.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    document.addEventListener("touchmove", handleTouchMove, { passive: true });
+    document.addEventListener("touchend", handleTouchEnd, { passive: true });
 
     return () => {
-      document.removeEventListener('touchstart', handleTouchStart);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
     };
   }, [isSidebarOpen]);
 
