@@ -8,24 +8,33 @@ No markdown.
 No explanation.
 No extra text.
 
-CRITICAL: The "facts" field MUST be an ARRAY (use [] brackets), even if empty or containing one item.
+CRITICAL REQUIREMENTS:
+1. The "facts" field MUST be an ARRAY [] (not an object {})
+2. The "type" field MUST be EXACTLY one of these 4 values: "interest", "important_date", "place", or "note"
+3. DO NOT create new type names like "sushi" or "hiking" - use the 4 valid types only
 
-The JSON must match this exact structure:
+VALID TYPES (use EXACTLY these strings):
+- "interest" - for hobbies, likes, preferences, activities the person enjoys
+- "important_date" - for birthdays, anniversaries, deadlines, specific dates
+- "place" - for locations, addresses, venues, cities, countries
+- "note" - for any other general information
 
+Example input: "I love sushi and hiking"
+CORRECT output:
 {
-  "intent": "food_and_activity",
+  "intent": "personal_preferences",
   "payload": {
-    "contact_name": "John Doe",
+    "contact_name": null,
     "facts": [
       {
         "type": "interest",
-        "value": "likes sushi",
-        "source_text": "I like sushi"
+        "value": "loves sushi",
+        "source_text": "I love sushi"
       },
       {
-        "type": "place",
-        "value": "lives in Seattle",
-        "source_text": "I live in Seattle"
+        "type": "interest",
+        "value": "loves hiking",
+        "source_text": "hiking"
       }
     ]
   },
@@ -33,16 +42,11 @@ The JSON must match this exact structure:
   "needs_clarification": false
 }
 
-REQUIRED FIELDS:
-- "facts" MUST be an array [] (not an object {})
-- Each fact object MUST have "type", "value", and "source_text"
-- If no facts found, return "facts": []
-
-Fact Types:
-- "interest": hobbies, likes, preferences (e.g., "I like sushi", "I enjoy hiking")
-- "important_date": birthdays, anniversaries, deadlines (e.g., "my birthday is April 5", "anniversary on June 10")
-- "place": locations, addresses, venues (e.g., "I live in Seattle", "works at Microsoft")
-- "note": general information that doesn't fit other categories
+WRONG output examples (DO NOT DO THIS):
+- "type": "sushi" ❌ (should be "interest")
+- "type": "hiking" ❌ (should be "interest")
+- "value": "/here" ❌ (not meaningful)
+- "facts": {} ❌ (should be an array)
 
 Extract ALL facts from the text. Be thorough.
 
@@ -120,18 +124,33 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
       }
     }
 
-    // Filter out any null or invalid facts from the array
-    parsed.payload.facts = parsed.payload.facts.filter((fact: any) => {
-      if (!fact || typeof fact !== 'object') {
-        console.warn("⚠️  Removing invalid fact (not an object):", fact);
-        return false;
-      }
-      if (!fact.value || fact.value === 'null' || fact.type === 'null') {
-        console.warn("⚠️  Removing invalid fact (null values):", fact);
-        return false;
-      }
-      return true;
-    });
+    // Normalize and validate facts
+    const validTypes = ['interest', 'important_date', 'place', 'note'];
+    parsed.payload.facts = parsed.payload.facts
+      .filter((fact: any) => {
+        if (!fact || typeof fact !== 'object') {
+          console.warn("⚠️  Removing invalid fact (not an object):", fact);
+          return false;
+        }
+        if (!fact.value || fact.value === 'null' || fact.type === 'null' || fact.value.trim() === '') {
+          console.warn("⚠️  Removing invalid fact (null/empty values):", fact);
+          return false;
+        }
+        // Filter out nonsensical values
+        if (fact.value === '/here' || fact.value.length < 2) {
+          console.warn("⚠️  Removing invalid fact (nonsensical value):", fact);
+          return false;
+        }
+        return true;
+      })
+      .map((fact: any) => {
+        // Normalize invalid types to valid ones
+        if (!validTypes.includes(fact.type)) {
+          console.warn(`⚠️  Invalid type "${fact.type}", normalizing to "note"`);
+          fact.type = 'note';
+        }
+        return fact;
+      });
 
     console.log("=== VALIDATED FACTS COUNT ===");
     console.log(`Found ${parsed.payload.facts.length} valid facts`);
@@ -147,6 +166,9 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
 export function transformToFrontendFormat(
   aiResult: AIResult
 ): FrontendExtractedData {
+  console.log("=== TRANSFORM FUNCTION CALLED ===");
+  console.log("Input AIResult:", JSON.stringify(aiResult, null, 2));
+
   const result: FrontendExtractedData = {
     interests: [],
     importantDates: [],
