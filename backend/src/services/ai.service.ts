@@ -8,27 +8,37 @@ No markdown.
 No explanation.
 No extra text.
 
+CRITICAL: The "facts" field MUST be an ARRAY (use [] brackets), even if empty or containing one item.
+
 The JSON must match this exact structure:
 
 {
-  "intent": string,
+  "intent": "food_and_activity",
   "payload": {
-    "contact_name"?: string,
+    "contact_name": "John Doe",
     "facts": [
       {
-        "type": "interest" | "important_date" | "place" | "note",
-        "value": string,
-        "source_text": string
+        "type": "interest",
+        "value": "likes sushi",
+        "source_text": "I like sushi"
+      },
+      {
+        "type": "place",
+        "value": "lives in Seattle",
+        "source_text": "I live in Seattle"
       }
     ]
   },
-  "confidence": number,
-  "needs_clarification": boolean,
-  "clarification_reason"?: string
+  "confidence": 0.9,
+  "needs_clarification": false
 }
- 
 
-Types:
+REQUIRED FIELDS:
+- "facts" MUST be an array [] (not an object {})
+- Each fact object MUST have "type", "value", and "source_text"
+- If no facts found, return "facts": []
+
+Fact Types:
 - "interest": hobbies, likes, preferences (e.g., "I like sushi", "I enjoy hiking")
 - "important_date": birthdays, anniversaries, deadlines (e.g., "my birthday is April 5", "anniversary on June 10")
 - "place": locations, addresses, venues (e.g., "I live in Seattle", "works at Microsoft")
@@ -75,21 +85,57 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
     }
 
     const parsed: AIResult = JSON.parse(jsonContent);
-    console.log("=== PARSED AI RESULT ===");
+    console.log("=== PARSED AI RESULT (RAW) ===");
     console.log(JSON.stringify(parsed, null, 2));
-    console.log("========================");
+    console.log("==============================");
 
+    // Ensure payload exists
     if (!parsed.payload) {
+      console.warn("⚠️  Missing payload, creating default");
       parsed.payload = { facts: [] };
     }
 
-    if (!Array.isArray(parsed.payload.facts)) {
+    // CRITICAL FIX: Ensure facts is ALWAYS an array
+    if (!parsed.payload.facts) {
+      console.warn("⚠️  Missing facts field, creating empty array");
       parsed.payload.facts = [];
+    } else if (!Array.isArray(parsed.payload.facts)) {
+      console.warn("⚠️  Facts is not an array, received:", typeof parsed.payload.facts);
+      console.warn("⚠️  Facts value:", JSON.stringify(parsed.payload.facts));
+
+      // If facts is a single object, try to convert it to an array
+      if (typeof parsed.payload.facts === 'object' && parsed.payload.facts !== null) {
+        const factObj = parsed.payload.facts as any;
+        // Check if it has valid fact properties
+        if (factObj.type && factObj.value) {
+          console.log("✓ Converting single fact object to array");
+          parsed.payload.facts = [factObj];
+        } else {
+          console.warn("⚠️  Invalid fact object, using empty array");
+          parsed.payload.facts = [];
+        }
+      } else {
+        console.warn("⚠️  Facts is invalid type, using empty array");
+        parsed.payload.facts = [];
+      }
     }
 
-    console.log("=== FACTS COUNT ===");
-    console.log(`Found ${parsed.payload.facts.length} facts`);
-    console.log("===================");
+    // Filter out any null or invalid facts from the array
+    parsed.payload.facts = parsed.payload.facts.filter((fact: any) => {
+      if (!fact || typeof fact !== 'object') {
+        console.warn("⚠️  Removing invalid fact (not an object):", fact);
+        return false;
+      }
+      if (!fact.value || fact.value === 'null' || fact.type === 'null') {
+        console.warn("⚠️  Removing invalid fact (null values):", fact);
+        return false;
+      }
+      return true;
+    });
+
+    console.log("=== VALIDATED FACTS COUNT ===");
+    console.log(`Found ${parsed.payload.facts.length} valid facts`);
+    console.log("=============================");
 
     return parsed;
   } catch (err) {
