@@ -51,8 +51,33 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
     format: "json",
   });
 
+  console.log("=== RAW AI RESPONSE ===");
+  console.log(response.message.content);
+  console.log("======================");
+
   try {
-    const parsed: AIResult = JSON.parse(response.message.content);
+    let jsonContent = response.message.content;
+
+    // DeepSeek-R1 models output reasoning first, then JSON
+
+    // Try to extract JSON from the response
+
+    // Look for content between curly braces
+
+    const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      jsonContent = jsonMatch[0];
+
+      console.log("=== EXTRACTED JSON ===");
+      console.log(jsonContent);
+      console.log("=====================");
+    }
+
+    const parsed: AIResult = JSON.parse(jsonContent);
+    console.log("=== PARSED AI RESULT ===");
+    console.log(JSON.stringify(parsed, null, 2));
+    console.log("========================");
 
     if (!parsed.payload) {
       parsed.payload = { facts: [] };
@@ -62,8 +87,13 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
       parsed.payload.facts = [];
     }
 
+    console.log("=== FACTS COUNT ===");
+    console.log(`Found ${parsed.payload.facts.length} facts`);
+    console.log("===================");
+
     return parsed;
   } catch (err) {
+    console.error("Failed to parse AI response:", err);
     throw new Error("AI returned invalid JSON");
   }
 }
@@ -80,10 +110,17 @@ export function transformToFrontendFormat(
 
   const facts = aiResult?.payload?.facts || [];
 
+  console.log("=== TRANSFORMING FACTS ===");
+  console.log(`Processing ${facts.length} facts`);
+
   for (const fact of facts) {
-    if (!fact || !fact.value) continue;
+    if (!fact || !fact.value) {
+      console.log("Skipping invalid fact:", fact);
+      continue;
+    }
 
     const item = { value: fact.value.trim() };
+    console.log(`Adding ${fact.type}: "${item.value}"`);
 
     switch (fact.type) {
       case "interest":
@@ -106,6 +143,10 @@ export function transformToFrontendFormat(
         result.notes.push(item);
     }
   }
+
+  console.log("=== FINAL RESULT ===");
+  console.log(JSON.stringify(result, null, 2));
+  console.log("====================");
 
   return result;
 }
