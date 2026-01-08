@@ -103,6 +103,10 @@ function App() {
 
       const data = await response.json();
 
+      console.log("=== FRONTEND RECEIVED DATA ===");
+      console.log(JSON.stringify(data, null, 2));
+      console.log("==============================");
+
       // Safely extract arrays with defaults to prevent .map errors
 
       const safeInterests = Array.isArray(data?.interests)
@@ -116,6 +120,13 @@ function App() {
       const safePlaces = Array.isArray(data?.places) ? data.places : [];
 
       const safeNotes = Array.isArray(data?.notes) ? data.notes : [];
+
+      console.log("=== SAFE ARRAYS ===");
+      console.log(`Interests: ${safeInterests.length}`);
+      console.log(`Dates: ${safeDates.length}`);
+      console.log(`Places: ${safePlaces.length}`);
+      console.log(`Notes: ${safeNotes.length}`);
+      console.log("===================");
 
       const newInterests: InfoItem[] = safeInterests.map(
         (item: { value: string }) => ({
