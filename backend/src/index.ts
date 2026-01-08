@@ -38,6 +38,11 @@ app.post("/extract", async (req, res) => {
   try {
     const aiResult = await extractFactsFromText(text);
     const frontendData = transformToFrontendFormat(aiResult);
+
+    console.log("=== SENDING TO FRONTEND ===");
+    console.log(JSON.stringify(frontendData, null, 2));
+    console.log("===========================");
+
     res.json(frontendData);
   } catch (err: any) {
     console.error("AI extraction failed:", err);
