@@ -37,17 +37,30 @@ The JSON must match this exact structure:
 }
 
 FACT TYPE RULES - YOU MUST FOLLOW THESE EXACTLY:
-- "interest": Use this type for hobbies, activities, likes, preferences
-  Examples: "likes sushi", "enjoys hiking", "plays tennis", "loves cooking"
-- "important_date": Use this type for birthdays, anniversaries, deadlines
-  Examples: "birthday is April 5", "anniversary on June 10", "deadline January 15"
-- "place": Use this type for locations, addresses, venues, cities, countries
-  Examples: "lives in Seattle", "works at Microsoft", "visited Paris"
-- "note": Use this type for general information that doesn't fit other categories
-  Examples: "has two cats", "allergic to peanuts", "vegetarian"
 
-IMPORTANT: When you see activities like "hiking" or "sushi", these are interests, NOT place types.
-DO NOT create custom types like "sushi" or "hiking". Use the four types above ONLY.
+Rule 1: "important_date" - HIGHEST PRIORITY
+Use "important_date" for ANY text mentioning dates, birthdays, anniversaries, deadlines:
+- Keywords: "birthday", "anniversary", "deadline", "born on", dates like "April 5", "June 10"
+- Examples: "birthday is April 5", "my birthday is april 5", "anniversary on June 10", "deadline January 15"
+- If you see month names, day numbers, or date-related words, use "important_date"
+
+Rule 2: "place" - SECOND PRIORITY
+Use "place" for locations, addresses, cities, countries, venues:
+- Keywords: "live", "lives in", "from", "works at", "visited", location names
+- Examples: "lives in Seattle", "from Tokyo", "works at Microsoft", "visited Paris"
+
+Rule 3: "interest" - THIRD PRIORITY
+Use "interest" for hobbies, activities, food preferences, likes:
+- Keywords: "like", "love", "enjoy", "play", hobby names, food names
+- Examples: "likes sushi", "enjoys hiking", "plays tennis", "loves cooking", "I like burger"
+- Activities like "hiking", "sushi", "burger" are interests
+
+Rule 4: "note" - DEFAULT CATEGORY
+Use "note" for everything else that doesn't fit above categories:
+- Examples: "has two cats", "allergic to peanuts", "vegetarian"
+
+CRITICAL: Check for dates FIRST before categorizing as anything else.
+DO NOT create custom types. Use ONLY these four types: "important_date", "place", "interest", "note"
 
 Extract ALL facts from the text. Be thorough.
 
