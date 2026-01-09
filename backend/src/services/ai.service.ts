@@ -26,6 +26,11 @@ The JSON must match this exact structure:
         "source_text": "I like sushi"
       },
       {
+        "type": "important_date",
+        "value": "birthday is April 5",
+        "source_text": "my birthday is April 5"
+      },
+      {
         "type": "place",
         "value": "lives in Seattle",
         "source_text": "I live in Seattle"
@@ -37,17 +42,41 @@ The JSON must match this exact structure:
 }
 
 FACT TYPE RULES - YOU MUST FOLLOW THESE EXACTLY:
-- "interest": Use this type for hobbies, activities, likes, preferences
-  Examples: "likes sushi", "enjoys hiking", "plays tennis", "loves cooking"
-- "important_date": Use this type for birthdays, anniversaries, deadlines
-  Examples: "birthday is April 5", "anniversary on June 10", "deadline January 15"
+
+*** IMPORTANT_DATE DETECTION - HIGHEST PRIORITY ***
+- "important_date": Use this type for ANY mention of dates, birthdays, anniversaries, deadlines, events with dates
+  CRITICAL: If you see ANY of these words, it is an "important_date" type:
+    - birthday, birth day, born, bday, b-day
+    - anniversary, wedding day
+    - deadline, due date
+    - holiday, celebration date
+    - ANY month name (January, February, March, April, May, June, July, August, September, October, November, December)
+    - ANY date pattern (April 5, 4/5, April 5th, 5th of April, etc.)
+
+  Examples of important_date:
+    - "my birthday is April 5" → type: "important_date"
+    - "birthday is April 5" → type: "important_date"
+    - "born on January 15" → type: "important_date"
+    - "our anniversary is June 10" → type: "important_date"
+    - "deadline January 15" → type: "important_date"
+    - "wedding on December 20" → type: "important_date"
+
+- "interest": Use this type for hobbies, activities, likes, preferences, favorite things
+  Examples: "likes sushi", "enjoys hiking", "plays tennis", "loves cooking", "likes burger"
+  NOTE: If it mentions a date or birthday, it is NOT an interest, it is an "important_date"
+
 - "place": Use this type for locations, addresses, venues, cities, countries
   Examples: "lives in Seattle", "works at Microsoft", "visited Paris"
+
 - "note": Use this type for general information that doesn't fit other categories
   Examples: "has two cats", "allergic to peanuts", "vegetarian"
 
-IMPORTANT: When you see activities like "hiking" or "sushi", these are interests, NOT place types.
-DO NOT create custom types like "sushi" or "hiking". Use the four types above ONLY.
+IMPORTANT REMINDERS:
+- ANY text containing "birthday", "anniversary", or month names MUST be type "important_date"
+- "I like burger" is type "interest" (it's a food preference)
+- "my birthday is april 5" is type "important_date" (it contains "birthday" and a date)
+- When you see activities like "hiking" or "sushi", these are interests, NOT place types
+- DO NOT create custom types. Use the four types above ONLY.
 
 Extract ALL facts from the text. Be thorough.
 
