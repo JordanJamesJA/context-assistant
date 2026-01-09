@@ -9,6 +9,18 @@ import {
 import type { Person, Message } from "../types/person";
 import EditableList from "./EditableList";
 
+/**
+ * PersonDetails Component
+ *
+ * Main content area displaying a person's extracted context across 4 categories.
+ * Each category is rendered using the reusable EditableList component.
+ *
+ * Props Pattern:
+ * - Receives person object (derived from selectedPersonId in parent)
+ * - Receives category-specific update/delete handlers from parent
+ * - Passes these handlers down to EditableList instances
+ * - This maintains type safety: each EditableList gets correctly-typed callbacks
+ */
 type PersonDetailsProps = {
   person: Person | null;
   onUpdateInterest: (itemId: string, newValue: string) => void;

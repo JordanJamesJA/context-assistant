@@ -2,6 +2,20 @@ import { useState, useRef, useEffect } from "react";
 import { Send, FileText, Loader2, User, MessageCircle } from "lucide-react";
 import { Speaker, type Speaker as SpeakerType } from "../types/person";
 
+/**
+ * ConversationInput Component
+ *
+ * Handles conversation input with speaker attribution and AI extraction submission.
+ *
+ * Features:
+ * - Auto-resizing textarea (max 200px)
+ * - Speaker toggle: tracks whether user or the other person said something
+ * - File upload support (.txt files)
+ * - Keyboard shortcuts: Enter to submit, Shift+Enter for new line
+ * - Loading state during AI extraction
+ *
+ * Why speaker matters: AI extracts facts differently based on who said what
+ */
 type ConversationInputProps = {
   selectedPersonId: string | null;
   onSubmit: (message: string, speaker: SpeakerType) => Promise<void>;
@@ -13,10 +27,13 @@ export default function ConversationInput({
 }: ConversationInputProps) {
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [speaker, setSpeaker] = useState<SpeakerType>(Speaker.PERSON); // Default: what they said
+  const [speaker, setSpeaker] = useState<SpeakerType>(Speaker.PERSON);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-resize textarea
+  /**
+   * Auto-resize textarea based on content
+   * Max height: 200px (prevents textarea from taking over screen)
+   */
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {

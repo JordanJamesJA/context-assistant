@@ -4,6 +4,20 @@ import { ChevronDown, ChevronRight, Trash2, Check, X, User, MessageCircle } from
 import type { InfoItem, Message } from "../types/person";
 import { Speaker } from "../types/person";
 
+/**
+ * EditableList Component (Reusable)
+ *
+ * Displays a collapsible list of items with inline editing and delete functionality.
+ * Used for all 4 categories: Interests, Important Dates, Places, Notes.
+ *
+ * Features:
+ * - Collapsible section with item count badge
+ * - Click-to-edit inline editing with keyboard shortcuts (Enter to save, Escape to cancel)
+ * - Source message display with speaker attribution
+ * - Hover-triggered delete button
+ *
+ * Why it's reusable: Generic InfoItem type works for all categories
+ */
 type EditableListProps = {
   items: InfoItem[];
   onUpdate: (itemId: string, newValue: string) => void;
@@ -23,6 +37,7 @@ export default function EditableList({
   emptyMessage = "No items yet",
   getMessageById,
 }: EditableListProps) {
+  // Local UI state for collapse/expand and inline editing
   const [collapsed, setCollapsed] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -49,6 +64,10 @@ export default function EditableList({
     onDelete(itemId);
   }
 
+  /**
+   * Formats the source message with speaker badge
+   * Shows who said the original text (You vs Them) and message preview
+   */
   function formatSource(message: Message | undefined): ReactNode {
     if (!message) {
       return <span className="text-xs text-gray-400 italic">Source unavailable</span>;

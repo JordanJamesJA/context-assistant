@@ -2,6 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { User, Plus, Trash2, X } from 'lucide-react';
 import type { Person } from '../types/person';
 
+/**
+ * Sidebar Component
+ *
+ * Displays the list of people and handles person management (add/remove/select).
+ * Responsive: Slides in/out on mobile, always visible on desktop.
+ *
+ * Props Pattern:
+ * - Receives people array and selectedPersonId from parent state
+ * - Uses callback props (onSelectPerson, onAddPerson, onRemovePerson) to notify parent of changes
+ * - This maintains unidirectional data flow: parent owns state, child requests changes
+ */
 type SidebarProps = {
   people: Person[];
   selectedPersonId: string | null;
@@ -21,8 +32,11 @@ export default function Sidebar({
   isOpen,
   onClose,
 }: SidebarProps) {
+  // Local UI state for inline add person form
   const [isAddingPerson, setIsAddingPerson] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
+
+  // Touch gesture tracking for swipe-to-close on mobile
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
   const isDragging = useRef<boolean>(false);
