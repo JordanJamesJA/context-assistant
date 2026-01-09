@@ -14,7 +14,7 @@ router.post("/extract", async (req, res) => {
 
   try {
     const aiResult = await extractFactsFromText(text);
-    const frontendData = transformToFrontendFormat(aiResult);
+    const frontendData = transformToFrontendFormat(aiResult, text);
     res.json(frontendData);
   } catch (err: any) {
     console.error("Extraction error:", err);

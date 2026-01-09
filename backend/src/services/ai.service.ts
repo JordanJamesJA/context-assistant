@@ -1,4 +1,8 @@
-import type { AIResult, FrontendExtractedData } from "../types/ai.types.js";
+import type {
+  AIFact,
+  AIResult,
+  FrontendExtractedData,
+} from "../types/ai.types.js";
 import ollama from "ollama";
 
 const SYSTEM_PROMPT = `You are an information extraction engine.
@@ -125,18 +129,9 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
 
   try {
     let jsonContent = response.message.content;
-
-    // DeepSeek-R1 models output reasoning first, then JSON
-
-    // Try to extract JSON from the response
-
-    // Look for content between curly braces
-
     const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
-
     if (jsonMatch) {
       jsonContent = jsonMatch[0];
-
       console.log("=== EXTRACTED JSON ===");
       console.log(jsonContent);
       console.log("=====================");
@@ -169,28 +164,20 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
       }
     }
 
-    // Filter out any null or invalid facts from the array
-
     parsed.payload.facts = parsed.payload.facts.filter((fact: any) => {
       if (!fact || typeof fact !== "object") {
         console.warn("⚠️  Removing invalid fact (not an object):", fact);
-
         return false;
       }
-
       if (!fact.value || fact.value === "null" || fact.type === "null") {
         console.warn("⚠️  Removing invalid fact (null values):", fact);
-
         return false;
       }
-
       return true;
     });
 
     console.log("=== VALIDATED FACTS COUNT ===");
-
     console.log(`Found ${parsed.payload.facts.length} valid facts`);
-
     console.log("=============================");
     return parsed;
   } catch (err) {
@@ -199,31 +186,91 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
   }
 }
 
+const DATE_PATTERNS = {
+  keywords:
+    /\b(birthday|bday|b-day|born|anniversary|wedding|deadline|due date|holiday|celebration)\b/i,
+  months:
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i,
+  dateFormats:
+    /\b(\d{1,2}\/\d{1,2}|\d{1,2}th|\d{1,2}st|\d{1,2}nd|\d{1,2}rd)\b/i,
+};
+
+const PLACE_PATTERNS = {
+  verbs:
+    /\b(went to|visited|traveled to|travelled to|lives in|from|works at|moved to|based in)\b/i,
+  locations:
+    /\b(city|country|state|town|village|island|beach|mountain|park|restaurant|cafe|hotel|airport)\b/i,
+};
+
+const INTEREST_PATTERNS = {
+  verbs:
+    /\b(likes|like|enjoys|enjoy|loves|love|plays|play|favorite|favourite|interested in|passionate about)\b/i,
+};
+
+function validateAndCorrectFactType(fact: AIFact): AIFact["type"] {
+  const text = (fact.source_text || fact.value).toLowerCase();
+
+  if (
+    DATE_PATTERNS.keywords.test(text) ||
+    DATE_PATTERNS.months.test(text) ||
+    DATE_PATTERNS.dateFormats.test(text)
+  ) {
+    if (fact.type !== "important_date") {
+      console.log(
+        `🔧 Correcting type from "${fact.type}" to "important_date" for: "${fact.value}"`
+      );
+    }
+    return "important_date";
+  }
+
+  if (PLACE_PATTERNS.verbs.test(text)) {
+    if (fact.type !== "place") {
+      console.log(
+        `🔧 Correcting type from "${fact.type}" to "place" for: "${fact.value}"`
+      );
+    }
+    return "place";
+  }
+
+  if (INTEREST_PATTERNS.verbs.test(text)) {
+    if (fact.type !== "interest") {
+      console.log(
+        `🔧 Correcting type from "${fact.type}" to "interest" for: "${fact.value}"`
+      );
+    }
+    return "interest";
+  }
+  return fact.type;
+}
+
 export function transformToFrontendFormat(
-  aiResult: AIResult
+  aiResult: AIResult,
+
+  originalText?: string
 ): FrontendExtractedData {
   const result: FrontendExtractedData = {
     interests: [],
+
     importantDates: [],
+
     places: [],
+
     notes: [],
   };
 
   const facts = aiResult?.payload?.facts || [];
-
   console.log("=== TRANSFORMING FACTS ===");
   console.log(`Processing ${facts.length} facts`);
-
   for (const fact of facts) {
     if (!fact || !fact.value) {
       console.log("Skipping invalid fact:", fact);
       continue;
     }
-
+    const correctedType = validateAndCorrectFactType(fact);
     const item = { value: fact.value.trim() };
-    console.log(`Adding ${fact.type}: "${item.value}"`);
+    console.log(`Adding ${correctedType}: "${item.value}"`);
 
-    switch (fact.type) {
+    switch (correctedType) {
       case "interest":
         result.interests.push(item);
         break;
