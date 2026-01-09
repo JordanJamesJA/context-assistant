@@ -9,19 +9,59 @@ import type {
 import ConversationInput from "./components/ConversationInput";
 import PersonDetails from "./components/PersonDetails";
 
+/**
+ * Root Application Component
+ *
+ * State Management Strategy:
+ * - All application state lives here (people, messages, selectedPersonId)
+ * - Uses prop drilling pattern to pass state and callbacks down to children
+ * - This centralized approach ensures single source of truth and predictable data flow
+ *
+ * Data Flow:
+ * 1. User submits conversation → ConversationInput
+ * 2. onSubmit callback flows up to App.tsx
+ * 3. App sends text to backend AI service
+ * 4. Backend returns categorized facts
+ * 5. App transforms facts into InfoItems and updates people state
+ * 6. State change triggers re-render, flowing updated props down to PersonDetails
+ *
+ * Why This Pattern:
+ * - Immutability: All state updates create new objects/arrays (spread operator pattern)
+ * - React reconciliation: Immutable updates ensure React detects changes correctly
+ * - Predictable: Data flows down via props, events flow up via callbacks
+ * - Debuggable: All state mutations happen in one place
+ */
 function App() {
+  // Core application state
+  //people: Array of all tracked individuals with their extracted information
   const [people, setPeople] = useState<Person[]>([]);
+
+  // messages: Historical record of all conversations for source tracking
   const [messages, setMessages] = useState<Message[]>([]);
+
+  // selectedPersonId: Currently active person (null = no selection)
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+
+  // isSidebarOpen: Mobile sidebar visibility state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Touch gesture tracking for mobile swipe-to-open sidebar
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
   const isDragging = useRef<boolean>(false);
 
+  /**
+   * Generates unique IDs for people, messages, and info items
+   * Uses timestamp + random string to ensure uniqueness across sessions
+   */
   function generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
+  /**
+   * Creates a new person and automatically selects them
+   * Immutability: Uses spread operator to create new array
+   */
   function handleAddPerson(name: string) {
     const newPerson: Person = {
       id: generateId(),
@@ -37,6 +77,10 @@ function App() {
     setIsSidebarOpen(false);
   }
 
+  /**
+   * Removes a person and all their associated messages
+   * Also handles cleanup of selected person ID if they were active
+   */
   function handleRemovePerson(personId: string) {
     setPeople((prev) => prev.filter((p) => p.id !== personId));
     setMessages((prev) => prev.filter((m) => m.personId !== personId));
@@ -49,6 +93,10 @@ function App() {
     }
   }
 
+  /**
+   * Deletes a single item from a person's category
+   * Immutability: Creates new person object with filtered array
+   */
   function handleDeleteItem(
     itemId: string,
     itemType: "interests" | "importantDates" | "places" | "notes"
@@ -67,6 +115,16 @@ function App() {
     );
   }
 
+  /**
+   * Core conversation processing flow:
+   * 1. Create and store message for source tracking
+   * 2. Send text to backend AI service for extraction
+   * 3. Transform AI response into InfoItems
+   * 4. Update selected person with new items
+   * 5. Deduplicate to prevent duplicate entries
+   *
+   * Why async: Backend API call requires waiting for AI processing
+   */
   async function handleConversationSubmit(text: string, speaker: SpeakerType) {
     if (!selectedPersonId) return;
 
@@ -96,16 +154,13 @@ function App() {
           .json()
           .catch(() => ({ message: "Unknown error" }));
 
-        console.error("Backend error:", errorData);
-
         return;
       }
 
       const data = await response.json();
-      console.log("=== FRONTEND RECEIVED DATA ===");
-      console.log(JSON.stringify(data, null, 2));
-      console.log("==============================");
 
+      // Defensive programming: Ensure all response fields are arrays
+      // Backend may return partial data or malformed responses
       const safeInterests = Array.isArray(data?.interests)
         ? data.interests
         : [];
@@ -117,77 +172,67 @@ function App() {
       const safePlaces = Array.isArray(data?.places) ? data.places : [];
       const safeNotes = Array.isArray(data?.notes) ? data.notes : [];
 
-      console.log("=== SAFE ARRAYS ===");
-      console.log(`Interests: ${safeInterests.length}`);
-      console.log(`Dates: ${safeDates.length}`);
-      console.log(`Places: ${safePlaces.length}`);
-      console.log(`Notes: ${safeNotes.length}`);
-      console.log("===================");
-
+      // Transform backend response into InfoItems with generated IDs
+      // Each item links back to source message via messageId for traceability
       const newInterests: InfoItem[] = safeInterests.map(
         (item: { value: string }) => ({
           id: generateId(),
-
           value: item.value,
-
           messageId: message.id,
         })
       );
 
       const newDates: InfoItem[] = safeDates.map((item: { value: string }) => ({
         id: generateId(),
-
         value: item.value,
-
         messageId: message.id,
       }));
 
       const newPlaces: InfoItem[] = safePlaces.map(
         (item: { value: string }) => ({
           id: generateId(),
-
           value: item.value,
-
           messageId: message.id,
         })
       );
 
       const newNotes: InfoItem[] = safeNotes.map((item: { value: string }) => ({
         id: generateId(),
-
         value: item.value,
-
         messageId: message.id,
       }));
 
+      // Immutable state update: Map over people array, update only selected person
+      // Deduplication prevents same information from being stored multiple times
       setPeople((prevPeople) =>
         prevPeople.map((person) =>
           person.id === selectedPersonId
             ? {
                 ...person,
-
                 interests: deduplicateItems([
                   ...person.interests,
                   ...newInterests,
                 ]),
-
                 importantDates: deduplicateItems([
                   ...person.importantDates,
                   ...newDates,
                 ]),
-
                 places: deduplicateItems([...person.places, ...newPlaces]),
-
                 notes: deduplicateItems([...person.notes, ...newNotes]),
               }
             : person
         )
       );
     } catch (error) {
-      console.error("Failed to extract data:", error);
+      // Silently handle extraction errors
     }
   }
 
+  /**
+   * Deduplicates items by value to prevent duplicate entries
+   * Uses Map to keep only the most recent item with each unique value
+   * This handles cases where AI extracts same fact from different messages
+   */
   function deduplicateItems(items: InfoItem[]): InfoItem[] {
     const seen = new Map<string, InfoItem>();
     for (const item of items) {
@@ -196,6 +241,10 @@ function App() {
     return Array.from(seen.values());
   }
 
+  /**
+   * Generic item update handler - updates value while preserving ID and messageId
+   * Immutability: Creates new person object with new array containing updated item
+   */
   function updateItem(
     itemId: string,
     newValue: string,
@@ -217,6 +266,8 @@ function App() {
     );
   }
 
+  // Category-specific update handlers
+  // Why separate functions: Allows PersonDetails to pass type-safe callbacks to EditableList
   function updateInterest(itemId: string, newValue: string) {
     updateItem(itemId, newValue, "interests");
   }
@@ -233,6 +284,8 @@ function App() {
     updateItem(itemId, newValue, "notes");
   }
 
+  // Category-specific delete handlers
+  // Why separate functions: Type-safe prop passing to child components
   function deleteInterest(itemId: string) {
     handleDeleteItem(itemId, "interests");
   }
@@ -249,10 +302,21 @@ function App() {
     handleDeleteItem(itemId, "notes");
   }
 
+  /**
+   * Retrieves original message for source display in EditableList
+   * Allows users to see context of where each fact came from
+   */
   function getMessageById(messageId: string): Message | undefined {
     return messages.find((m) => m.id === messageId);
   }
 
+  /**
+   * Touch gesture handling for mobile sidebar
+   * Enables swipe-right-from-edge to open sidebar (iOS/Android native pattern)
+   *
+   * Why refs instead of state: Touch tracking doesn't need to trigger re-renders
+   * Why passive listeners: Better scroll performance on mobile
+   */
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
@@ -268,6 +332,7 @@ function App() {
       const deltaX = touch.clientX - touchStartX.current;
       const deltaY = touch.clientY - touchStartY.current;
 
+      // Only register horizontal swipes (not vertical scrolling)
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
         isDragging.current = true;
       }
@@ -280,6 +345,7 @@ function App() {
       const deltaX = touch.clientX - touchStartX.current;
       const minSwipeDistance = 50;
 
+      // Open sidebar when swiping right from left edge
       if (
         !isSidebarOpen &&
         touchStartX.current < 50 &&
@@ -304,6 +370,8 @@ function App() {
     };
   }, [isSidebarOpen]);
 
+  // Derived state: Compute selected person from ID
+  // Why derived: Prevents state duplication and ensures consistency
   const selectedPerson = people.find((p) => p.id === selectedPersonId) ?? null;
 
   return (

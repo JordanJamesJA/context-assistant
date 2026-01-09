@@ -1,3 +1,19 @@
+/**
+ * AI Extraction Service
+ *
+ * Uses Ollama (deepseek-r1:1.5b) to extract structured facts from conversation text.
+ *
+ * Key Responsibilities:
+ * 1. Send conversation text to AI with detailed categorization instructions
+ * 2. Parse and validate AI JSON response
+ * 3. Correct misclassified fact types using pattern matching
+ * 4. Transform AI format to frontend-compatible format
+ *
+ * Why pattern-based validation:
+ * AI models occasionally misclassify facts (e.g., "birthday April 5" as interest instead of date).
+ * We use regex patterns to catch and correct these errors deterministically.
+ */
+
 import type {
   AIFact,
   AIResult,
@@ -5,6 +21,15 @@ import type {
 } from "../types/ai.types.js";
 import ollama from "ollama";
 
+/**
+ * System prompt for AI extraction
+ *
+ * Provides detailed instructions for:
+ * - Exact JSON structure required
+ * - Decision tree for fact classification (dates → places → interests → notes)
+ * - Examples of each category
+ * - Edge case handling
+ */
 const SYSTEM_PROMPT = `You are an information extraction engine.
 
 You MUST return ONLY valid JSON.
@@ -110,38 +135,40 @@ CRITICAL REMINDERS:
 
 `;
 
+/**
+ * Extracts facts from conversation text using Ollama AI
+ *
+ * Process:
+ * 1. Send text to Ollama with system prompt
+ * 2. Extract JSON from response (handles markdown-wrapped JSON)
+ * 3. Validate facts array structure
+ * 4. Filter out invalid/null facts
+ *
+ * @param text - The conversation text to extract facts from
+ * @returns AIResult with validated facts array
+ * @throws Error if AI returns unparseable JSON
+ */
 export async function extractFactsFromText(text: string): Promise<AIResult> {
   const response = await ollama.chat({
     model: "deepseek-r1:1.5b",
-
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-
       { role: "user", content: text },
     ],
-
     format: "json",
   });
 
-  console.log("=== RAW AI RESPONSE ===");
-  console.log(response.message.content);
-  console.log("======================");
-
   try {
+    // Extract JSON from response (AI sometimes wraps in markdown)
     let jsonContent = response.message.content;
     const jsonMatch = jsonContent.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       jsonContent = jsonMatch[0];
-      console.log("=== EXTRACTED JSON ===");
-      console.log(jsonContent);
-      console.log("=====================");
     }
 
     const parsed: AIResult = JSON.parse(jsonContent);
-    console.log("=== PARSED AI RESULT ===");
-    console.log(JSON.stringify(parsed, null, 2));
-    console.log("========================");
 
+    // Ensure payload and facts array exist (defensive programming)
     if (!parsed.payload) {
       parsed.payload = { facts: [] };
     }
@@ -149,6 +176,7 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
     if (!parsed.payload.facts) {
       parsed.payload.facts = [];
     } else if (!Array.isArray(parsed.payload.facts)) {
+      // Handle case where AI returns single fact object instead of array
       if (
         typeof parsed.payload.facts === "object" &&
         parsed.payload.facts !== null
@@ -164,28 +192,33 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
       }
     }
 
+    // Filter out invalid facts (malformed objects, null values)
     parsed.payload.facts = parsed.payload.facts.filter((fact: any) => {
       if (!fact || typeof fact !== "object") {
-        console.warn("⚠️  Removing invalid fact (not an object):", fact);
         return false;
       }
       if (!fact.value || fact.value === "null" || fact.type === "null") {
-        console.warn("⚠️  Removing invalid fact (null values):", fact);
         return false;
       }
       return true;
     });
 
-    console.log("=== VALIDATED FACTS COUNT ===");
-    console.log(`Found ${parsed.payload.facts.length} valid facts`);
-    console.log("=============================");
     return parsed;
   } catch (err) {
-    console.error("Failed to parse AI response:", err);
     throw new Error("AI returned invalid JSON");
   }
 }
 
+/**
+ * Pattern matching rules for fact type validation
+ *
+ * Priority order (highest to lowest):
+ * 1. DATE_PATTERNS - Birthday, anniversary, month names, date formats
+ * 2. PLACE_PATTERNS - Location verbs (went to, lives in, from)
+ * 3. INTEREST_PATTERNS - Preference verbs (likes, enjoys, loves, plays)
+ *
+ * Why this order: Dates are most specific, places are next, interests are broad
+ */
 const DATE_PATTERNS = {
   keywords:
     /\b(birthday|bday|b-day|born|anniversary|wedding|deadline|due date|holiday|celebration)\b/i,
@@ -207,69 +240,83 @@ const INTEREST_PATTERNS = {
     /\b(likes|like|enjoys|enjoy|loves|love|plays|play|favorite|favourite|interested in|passionate about)\b/i,
 };
 
+/**
+ * Validates and corrects fact type using pattern matching
+ *
+ * AI sometimes misclassifies facts. This function uses regex patterns to:
+ * - Detect dates by keywords, month names, or date formats
+ * - Detect places by location-related verbs
+ * - Detect interests by preference verbs
+ *
+ * @param fact - The fact to validate
+ * @returns The corrected fact type
+ */
 function validateAndCorrectFactType(fact: AIFact): AIFact["type"] {
   const text = (fact.source_text || fact.value).toLowerCase();
 
+  // Priority 1: Check for date indicators
   if (
     DATE_PATTERNS.keywords.test(text) ||
     DATE_PATTERNS.months.test(text) ||
     DATE_PATTERNS.dateFormats.test(text)
   ) {
-    if (fact.type !== "important_date") {
-      console.log(
-        `🔧 Correcting type from "${fact.type}" to "important_date" for: "${fact.value}"`
-      );
-    }
     return "important_date";
   }
 
+  // Priority 2: Check for place indicators
   if (PLACE_PATTERNS.verbs.test(text)) {
-    if (fact.type !== "place") {
-      console.log(
-        `🔧 Correcting type from "${fact.type}" to "place" for: "${fact.value}"`
-      );
-    }
     return "place";
   }
 
+  // Priority 3: Check for interest indicators
   if (INTEREST_PATTERNS.verbs.test(text)) {
-    if (fact.type !== "interest") {
-      console.log(
-        `🔧 Correcting type from "${fact.type}" to "interest" for: "${fact.value}"`
-      );
-    }
     return "interest";
   }
+
+  // Default: Keep AI's original classification
   return fact.type;
 }
 
+/**
+ * Transforms AI result format to frontend-compatible format
+ *
+ * Process:
+ * 1. Initialize empty arrays for each category
+ * 2. Iterate through AI facts array
+ * 3. Validate and correct each fact's type
+ * 4. Sort fact into appropriate category array
+ *
+ * Why transformation needed:
+ * - AI returns array of heterogeneous facts with "type" field
+ * - Frontend expects separate arrays for each category
+ * - This transformation makes frontend code simpler (no filtering needed)
+ *
+ * @param aiResult - The validated AI extraction result
+ * @param originalText - Optional original text (currently unused, for future enhancements)
+ * @returns Object with categorized arrays ready for frontend consumption
+ */
 export function transformToFrontendFormat(
   aiResult: AIResult,
-
   originalText?: string
 ): FrontendExtractedData {
   const result: FrontendExtractedData = {
     interests: [],
-
     importantDates: [],
-
     places: [],
-
     notes: [],
   };
 
   const facts = aiResult?.payload?.facts || [];
-  console.log("=== TRANSFORMING FACTS ===");
-  console.log(`Processing ${facts.length} facts`);
   for (const fact of facts) {
     if (!fact || !fact.value) {
-      console.log("Skipping invalid fact:", fact);
       continue;
     }
+
+    // Apply pattern-based type correction
     const correctedType = validateAndCorrectFactType(fact);
     const item = { value: fact.value.trim() };
-    console.log(`Adding ${correctedType}: "${item.value}"`);
 
+    // Route to appropriate category
     switch (correctedType) {
       case "interest":
         result.interests.push(item);
@@ -288,13 +335,10 @@ export function transformToFrontendFormat(
         break;
 
       default:
+        // Fallback: Unknown types go to notes
         result.notes.push(item);
     }
   }
-
-  console.log("=== FINAL RESULT ===");
-  console.log(JSON.stringify(result, null, 2));
-  console.log("====================");
 
   return result;
 }

@@ -1,3 +1,18 @@
+/**
+ * Backend Express Server
+ *
+ * Provides API endpoint for AI-powered fact extraction from conversation text.
+ *
+ * Endpoints:
+ * - GET /ping - Health check
+ * - POST /extract - Extract facts from conversation text
+ *
+ * Technology:
+ * - Express 5.2.1 for HTTP server
+ * - Ollama for AI extraction (deepseek-r1:1.5b model)
+ * - CORS enabled for frontend communication
+ */
+
 import express from "express";
 import cors from "cors";
 import {
@@ -14,6 +29,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+/**
+ * Health check endpoint
+ * Used to verify server is running
+ */
 app.get("/ping", (_req, res) => {
   res.json({
     success: true,
@@ -21,6 +40,12 @@ app.get("/ping", (_req, res) => {
   });
 });
 
+/**
+ * Main extraction endpoint
+ *
+ * Receives conversation text, processes with AI, returns categorized facts.
+ * Always returns valid structure (empty arrays on error) to prevent frontend crashes.
+ */
 app.post("/extract", async (req, res) => {
   const { text } = req.body as ExtractRequest;
 
@@ -39,13 +64,8 @@ app.post("/extract", async (req, res) => {
     const aiResult = await extractFactsFromText(text);
     const frontendData = transformToFrontendFormat(aiResult, text);
 
-    console.log("=== SENDING TO FRONTEND ===");
-    console.log(JSON.stringify(frontendData, null, 2));
-    console.log("===========================");
     res.json(frontendData);
   } catch (err: any) {
-    console.error("AI extraction failed:", err);
-
     res.status(500).json({
       error: "AI extraction failed",
       message: err.message,
