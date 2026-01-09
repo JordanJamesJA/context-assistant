@@ -37,7 +37,7 @@ app.post("/extract", async (req, res) => {
 
   try {
     const aiResult = await extractFactsFromText(text);
-    const frontendData = transformToFrontendFormat(aiResult);
+    const frontendData = transformToFrontendFormat(aiResult, text);
 
     console.log("=== SENDING TO FRONTEND ===");
     console.log(JSON.stringify(frontendData, null, 2));

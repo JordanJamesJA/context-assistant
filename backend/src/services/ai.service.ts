@@ -199,8 +199,63 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
   }
 }
 
+// Regex patterns for deterministic fact type detection
+const DATE_PATTERNS = {
+  keywords: /\b(birthday|bday|b-day|born|anniversary|wedding|deadline|due date|holiday|celebration)\b/i,
+  months: /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i,
+  dateFormats: /\b(\d{1,2}\/\d{1,2}|\d{1,2}th|\d{1,2}st|\d{1,2}nd|\d{1,2}rd)\b/i
+};
+
+const PLACE_PATTERNS = {
+  verbs: /\b(went to|visited|traveled to|travelled to|lives in|from|works at|moved to|based in)\b/i,
+  // Common location indicators
+  locations: /\b(city|country|state|town|village|island|beach|mountain|park|restaurant|cafe|hotel|airport)\b/i
+};
+
+const INTEREST_PATTERNS = {
+  verbs: /\b(likes|like|enjoys|enjoy|loves|love|plays|play|favorite|favourite|interested in|passionate about)\b/i
+};
+
+/**
+ * Validates and corrects fact types using regex patterns
+ * This ensures consistent categorization even when the AI model makes mistakes
+ */
+function validateAndCorrectFactType(fact: AIFact, sourceText: string): AIFact["type"] {
+  const text = (fact.source_text || sourceText || fact.value).toLowerCase();
+
+  // Check for important dates (highest priority)
+  if (DATE_PATTERNS.keywords.test(text) ||
+      DATE_PATTERNS.months.test(text) ||
+      DATE_PATTERNS.dateFormats.test(text)) {
+    if (fact.type !== "important_date") {
+      console.log(`🔧 Correcting type from "${fact.type}" to "important_date" for: "${fact.value}"`);
+    }
+    return "important_date";
+  }
+
+  // Check for places (second priority)
+  if (PLACE_PATTERNS.verbs.test(text)) {
+    if (fact.type !== "place") {
+      console.log(`🔧 Correcting type from "${fact.type}" to "place" for: "${fact.value}"`);
+    }
+    return "place";
+  }
+
+  // Check for interests (third priority)
+  if (INTEREST_PATTERNS.verbs.test(text)) {
+    if (fact.type !== "interest") {
+      console.log(`🔧 Correcting type from "${fact.type}" to "interest" for: "${fact.value}"`);
+    }
+    return "interest";
+  }
+
+  // If no patterns match, keep the AI's original classification
+  return fact.type;
+}
+
 export function transformToFrontendFormat(
-  aiResult: AIResult
+  aiResult: AIResult,
+  originalText?: string
 ): FrontendExtractedData {
   const result: FrontendExtractedData = {
     interests: [],
@@ -220,10 +275,13 @@ export function transformToFrontendFormat(
       continue;
     }
 
+    // Validate and correct the fact type using regex patterns
+    const correctedType = validateAndCorrectFactType(fact, originalText || "");
     const item = { value: fact.value.trim() };
-    console.log(`Adding ${fact.type}: "${item.value}"`);
 
-    switch (fact.type) {
+    console.log(`Adding ${correctedType}: "${item.value}"`);
+
+    switch (correctedType) {
       case "interest":
         result.interests.push(item);
         break;
