@@ -8,7 +8,11 @@ No markdown.
 No explanation.
 No extra text.
 
-CRITICAL: The "facts" field MUST be an ARRAY (use [] brackets), even if empty or containing one item.
+CRITICAL RULES:
+1. The "facts" field MUST be an ARRAY (use [] brackets), even if empty or containing one item
+2. Each fact MUST have EXACTLY these fields: "type", "value", "source_text"
+3. DO NOT add extra fields like "label" or any other fields
+4. The "type" field MUST be one of these EXACT values: "interest", "important_date", "place", or "note"
 
 The JSON must match this exact structure:
 {
@@ -32,16 +36,18 @@ The JSON must match this exact structure:
   "needs_clarification": false
 }
 
-REQUIRED FIELDS:
-- "facts" MUST be an array [] (not an object {})
-- Each fact object MUST have "type", "value", and "source_text"
-- If no facts found, return "facts": []
+FACT TYPE RULES - YOU MUST FOLLOW THESE EXACTLY:
+- "interest": Use this type for hobbies, activities, likes, preferences
+  Examples: "likes sushi", "enjoys hiking", "plays tennis", "loves cooking"
+- "important_date": Use this type for birthdays, anniversaries, deadlines
+  Examples: "birthday is April 5", "anniversary on June 10", "deadline January 15"
+- "place": Use this type for locations, addresses, venues, cities, countries
+  Examples: "lives in Seattle", "works at Microsoft", "visited Paris"
+- "note": Use this type for general information that doesn't fit other categories
+  Examples: "has two cats", "allergic to peanuts", "vegetarian"
 
-Fact Types:
-- "interest": hobbies, likes, preferences (e.g., "I like sushi", "I enjoy hiking")
-- "important_date": birthdays, anniversaries, deadlines (e.g., "my birthday is April 5", "anniversary on June 10")
-- "place": locations, addresses, venues (e.g., "I live in Seattle", "works at Microsoft")
-- "note": general information that doesn't fit other categories
+IMPORTANT: When you see activities like "hiking" or "sushi", these are interests, NOT place types.
+DO NOT create custom types like "sushi" or "hiking". Use the four types above ONLY.
 
 Extract ALL facts from the text. Be thorough.
 
