@@ -220,8 +220,9 @@ const INTEREST_PATTERNS = {
  * Validates and corrects fact types using regex patterns
  * This ensures consistent categorization even when the AI model makes mistakes
  */
-function validateAndCorrectFactType(fact: AIFact, sourceText: string): AIFact["type"] {
-  const text = (fact.source_text || sourceText || fact.value).toLowerCase();
+function validateAndCorrectFactType(fact: AIFact): AIFact["type"] {
+  // Only check the fact's own text, not the entire input
+  const text = (fact.source_text || fact.value).toLowerCase();
 
   // Check for important dates (highest priority)
   if (DATE_PATTERNS.keywords.test(text) ||
@@ -276,7 +277,7 @@ export function transformToFrontendFormat(
     }
 
     // Validate and correct the fact type using regex patterns
-    const correctedType = validateAndCorrectFactType(fact, originalText || "");
+    const correctedType = validateAndCorrectFactType(fact);
     const item = { value: fact.value.trim() };
 
     console.log(`Adding ${correctedType}: "${item.value}"`);
