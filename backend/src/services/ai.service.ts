@@ -1,68 +1,59 @@
 /**
  * AI Extraction Service
  *
- * Uses Ollama (deepseek-r1:1.5b) to extract structured facts from conversation text.
+ * Uses Ollama (deepseek-r1:1.5b) to extract meaningful information from conversations.
+ *
+ * NEW APPROACH (ChatGPT-style):
+ * - Preserves compound sentences and natural language flow
+ * - Extracts entries (not atomic facts) that can contain multiple related pieces of info
+ * - Allows entries to have multiple category tags
+ * - AI determines what's meaningful, we don't chop it up with regex
  *
  * Key Responsibilities:
- * 1. Send conversation text to AI with detailed categorization instructions
+ * 1. Send conversation text to AI with natural extraction instructions
  * 2. Parse and validate AI JSON response
- * 3. Correct misclassified fact types using pattern matching
- * 4. Transform AI format to frontend-compatible format
- *
- * Why pattern-based validation:
- * AI models occasionally misclassify facts (e.g., "birthday April 5" as interest instead of date).
- * We use regex patterns to catch and correct these errors deterministically.
+ * 3. Transform AI format to frontend-compatible format (backwards compatible)
  */
 
 import type {
-  AIFact,
+  AIEntry,
   AIResult,
   FrontendExtractedData,
 } from "../types/ai.types.js";
 import ollama from "ollama";
 
 /**
- * System prompt for AI extraction
+ * System prompt for AI extraction - ChatGPT-style natural language processing
  *
- * Provides detailed instructions for:
- * - Exact JSON structure required
- * - Decision tree for fact classification (dates → places → interests → notes)
- * - Examples of each category
- * - Edge case handling
+ * NEW APPROACH:
+ * - Preserve compound sentences and natural language flow
+ * - Extract meaningful entries (not atomic facts)
+ * - Allow entries to have multiple category tags
+ * - Let AI determine what's meaningful without rigid rules
  */
-const SYSTEM_PROMPT = `You are an information extraction engine.
+const SYSTEM_PROMPT = `You are a natural language information extraction assistant, like ChatGPT.
 
-You MUST return ONLY valid JSON.
-No markdown.
-No explanation.
-No extra text.
+Extract meaningful information from conversations as complete, natural sentences.
+PRESERVE compound sentences that contain multiple related pieces of information.
+DO NOT break up compound sentences into separate atomic facts.
 
-CRITICAL RULES:
-1. The "facts" field MUST be an ARRAY (use [] brackets), even if empty or containing one item
-2. Each fact MUST have EXACTLY these fields: "type", "value", "source_text"
-3. DO NOT add extra fields like "label" or any other fields
-4. The "type" field MUST be one of these EXACT values: "interest", "important_date", "place", or "note"
+You MUST return ONLY valid JSON. No markdown, no explanation, no extra text.
 
 The JSON must match this exact structure:
 {
-  "intent": "food_and_activity",
+  "intent": "general",
   "payload": {
     "contact_name": "John Doe",
-    "facts": [
+    "entries": [
       {
-        "type": "interest",
-        "value": "likes sushi",
-        "source_text": "I like sushi"
+        "text": "loves sushi and ramen, especially from that place in Tokyo",
+        "categories": ["interest", "place"],
+        "source_text": "I love sushi and ramen, especially from that place in Tokyo"
       },
       {
-        "type": "important_date",
-        "value": "birthday is April 5",
-        "source_text": "my birthday is April 5"
-      },
-      {
-        "type": "place",
-        "value": "went to Bali",
-        "source_text": "I went to Bali"
+        "text": "birthday is April 5th and celebrating in Paris this year",
+        "categories": ["important_date", "place"],
+        "source_text": "my birthday is April 5th and I'm celebrating in Paris this year"
       }
     ]
   },
@@ -70,82 +61,73 @@ The JSON must match this exact structure:
   "needs_clarification": false
 }
 
-FACT TYPE CLASSIFICATION - FOLLOW THIS DECISION TREE:
+CRITICAL RULES:
 
-STEP 1: CHECK FOR IMPORTANT_DATE (HIGHEST PRIORITY)
-- If the text contains ANY of these keywords, it is an "important_date":
-  * birthday, birth day, born, bday, b-day
-  * anniversary, wedding day
-  * deadline, due date
-  * holiday, celebration date
-  * ANY month name (January, February, March, April, May, June, July, August, September, October, November, December)
-  * ANY date pattern (April 5, 4/5, April 5th, 5th of April, etc.)
+1. "entries" field MUST be an ARRAY (use [] brackets)
+2. Each entry has THREE fields: "text", "categories", "source_text"
+3. "text" should be natural, readable sentences (can be compound/complex)
+4. "categories" is an ARRAY that can contain multiple tags: "interest", "important_date", "place", "note"
+5. PRESERVE the natural flow - if someone says "I love sushi and went to Tokyo", keep it together!
 
-EXAMPLES OF IMPORTANT_DATE:
-  ✓ "my birthday is April 1" → type: "important_date", value: "birthday is April 1"
-  ✓ "birthday april 1" → type: "important_date", value: "birthday April 1"
-  ✓ "born on January 15" → type: "important_date", value: "born on January 15"
-  ✓ "our anniversary is June 10" → type: "important_date", value: "anniversary is June 10"
-  ✓ "deadline January 15" → type: "important_date", value: "deadline January 15"
+CATEGORY TAGGING GUIDELINES (entries can have MULTIPLE categories):
 
-STEP 2: CHECK FOR PLACE (SECOND PRIORITY)
-- If the text contains ANY of these patterns, it is a "place":
-  * "went to [location]" → type: "place"
-  * "visited [location]" → type: "place"
-  * "traveled to [location]" → type: "place"
-  * "lives in [location]" → type: "place"
-  * "from [location]" → type: "place"
-  * "works at [location]" → type: "place"
-  * ANY city, country, state, or location name (Bali, Seattle, Paris, Tokyo, New York, etc.)
+"interest" - hobbies, likes, preferences, activities, favorite things
+"important_date" - birthdays, anniversaries, deadlines, holidays, any date mentions
+"place" - locations visited, lived in, from, or want to visit
+"note" - general information, health notes, family info, dietary restrictions
 
-EXAMPLES OF PLACE:
-  ✓ "I went to Bali" → type: "place", value: "went to Bali"
-  ✓ "went to bali" → type: "place", value: "went to Bali"
-  ✓ "visited Paris" → type: "place", value: "visited Paris"
-  ✓ "lives in Seattle" → type: "place", value: "lives in Seattle"
-  ✓ "from New York" → type: "place", value: "from New York"
-  ✗ "hiking in the mountains" → NOT a place (it's an interest/activity)
+EXAMPLES OF GOOD EXTRACTION:
 
-STEP 3: CHECK FOR INTEREST
-- If the text describes hobbies, activities, likes, preferences, or favorite things:
-  * "likes [thing]" → type: "interest"
-  * "enjoys [activity]" → type: "interest"
-  * "loves [thing]" → type: "interest"
-  * "plays [sport/game]" → type: "interest"
-  * "favorite [thing]" → type: "interest"
+Input: "I love sushi and went to Tokyo last April for my birthday"
+Output:
+{
+  "text": "loves sushi, went to Tokyo last April for birthday",
+  "categories": ["interest", "place", "important_date"],
+  "source_text": "I love sushi and went to Tokyo last April for my birthday"
+}
 
-EXAMPLES OF INTEREST:
-  ✓ "likes sushi" → type: "interest", value: "likes sushi"
-  ✓ "enjoys hiking" → type: "interest", value: "enjoys hiking"
-  ✓ "plays tennis" → type: "interest", value: "plays tennis"
-  ✓ "loves cooking" → type: "interest", value: "loves cooking"
+Input: "She's vegetarian, allergic to peanuts, and her birthday is June 10th"
+Output:
+{
+  "text": "vegetarian, allergic to peanuts, birthday June 10th",
+  "categories": ["note", "important_date"],
+  "source_text": "She's vegetarian, allergic to peanuts, and her birthday is June 10th"
+}
 
-STEP 4: EVERYTHING ELSE IS A NOTE
-- Use "note" for general information that doesn't fit the above categories:
-  * "has two cats" → type: "note"
-  * "allergic to peanuts" → type: "note"
-  * "vegetarian" → type: "note"
+Input: "He plays tennis and loves hiking in Colorado"
+Output:
+{
+  "text": "plays tennis and loves hiking in Colorado",
+  "categories": ["interest", "place"],
+  "source_text": "He plays tennis and loves hiking in Colorado"
+}
 
-CRITICAL REMINDERS:
-1. ALWAYS extract at least one fact if there's any information in the text
-2. "went to [location]" is ALWAYS a "place", NOT an "interest"
-3. "birthday" or any month name ALWAYS means "important_date"
-4. DO NOT create custom types. Use only: "interest", "important_date", "place", "note"
-5. Be thorough - extract ALL facts from the text
+WHEN TO SPLIT INTO MULTIPLE ENTRIES:
 
+Only split if the pieces of information are COMPLETELY UNRELATED:
+
+Input: "I like pizza. Oh and I'm from Boston. My birthday is May 3rd."
+Output THREE separate entries because they're unrelated topics.
+
+But for compound sentences with related info, KEEP THEM TOGETHER:
+
+Input: "I love Italian food and went to Rome last summer"
+Output ONE entry with both categories because they're contextually related.
+
+CRITICAL: Work like ChatGPT - understand context, preserve natural language, don't chop things up unnecessarily.
 `;
 
 /**
- * Extracts facts from conversation text using Ollama AI
+ * Extracts meaningful entries from conversation text using Ollama AI
  *
- * Process:
- * 1. Send text to Ollama with system prompt
+ * NEW APPROACH - ChatGPT-style:
+ * 1. Send text to Ollama with natural language extraction prompt
  * 2. Extract JSON from response (handles markdown-wrapped JSON)
- * 3. Validate facts array structure
- * 4. Filter out invalid/null facts
+ * 3. Validate entries array structure
+ * 4. Filter out invalid/empty entries
  *
- * @param text - The conversation text to extract facts from
- * @returns AIResult with validated facts array
+ * @param text - The conversation text to extract information from
+ * @returns AIResult with validated entries array
  * @throws Error if AI returns unparseable JSON
  */
 export async function extractFactsFromText(text: string): Promise<AIResult> {
@@ -168,36 +150,39 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
 
     const parsed: AIResult = JSON.parse(jsonContent);
 
-    // Ensure payload and facts array exist (defensive programming)
+    // Ensure payload and entries array exist (defensive programming)
     if (!parsed.payload) {
-      parsed.payload = { facts: [] };
+      parsed.payload = { entries: [] };
     }
 
-    if (!parsed.payload.facts) {
-      parsed.payload.facts = [];
-    } else if (!Array.isArray(parsed.payload.facts)) {
-      // Handle case where AI returns single fact object instead of array
+    if (!parsed.payload.entries) {
+      parsed.payload.entries = [];
+    } else if (!Array.isArray(parsed.payload.entries)) {
+      // Handle case where AI returns single entry object instead of array
       if (
-        typeof parsed.payload.facts === "object" &&
-        parsed.payload.facts !== null
+        typeof parsed.payload.entries === "object" &&
+        parsed.payload.entries !== null
       ) {
-        const factObj = parsed.payload.facts as any;
-        if (factObj.type && factObj.value) {
-          parsed.payload.facts = [factObj];
+        const entryObj = parsed.payload.entries as any;
+        if (entryObj.text && entryObj.categories) {
+          parsed.payload.entries = [entryObj];
         } else {
-          parsed.payload.facts = [];
+          parsed.payload.entries = [];
         }
       } else {
-        parsed.payload.facts = [];
+        parsed.payload.entries = [];
       }
     }
 
-    // Filter out invalid facts (malformed objects, null values)
-    parsed.payload.facts = parsed.payload.facts.filter((fact: any) => {
-      if (!fact || typeof fact !== "object") {
+    // Filter out invalid entries (malformed objects, null values, empty text)
+    parsed.payload.entries = parsed.payload.entries.filter((entry: any) => {
+      if (!entry || typeof entry !== "object") {
         return false;
       }
-      if (!fact.value || fact.value === "null" || fact.type === "null") {
+      if (!entry.text || entry.text === "null" || entry.text.trim() === "") {
+        return false;
+      }
+      if (!Array.isArray(entry.categories) || entry.categories.length === 0) {
         return false;
       }
       return true;
@@ -210,86 +195,19 @@ export async function extractFactsFromText(text: string): Promise<AIResult> {
 }
 
 /**
- * Pattern matching rules for fact type validation
- *
- * Priority order (highest to lowest):
- * 1. DATE_PATTERNS - Birthday, anniversary, month names, date formats
- * 2. PLACE_PATTERNS - Location verbs (went to, lives in, from)
- * 3. INTEREST_PATTERNS - Preference verbs (likes, enjoys, loves, plays)
- *
- * Why this order: Dates are most specific, places are next, interests are broad
- */
-const DATE_PATTERNS = {
-  keywords:
-    /\b(birthday|bday|b-day|born|anniversary|wedding|deadline|due date|holiday|celebration)\b/i,
-  months:
-    /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i,
-  dateFormats:
-    /\b(\d{1,2}\/\d{1,2}|\d{1,2}th|\d{1,2}st|\d{1,2}nd|\d{1,2}rd)\b/i,
-};
-
-const PLACE_PATTERNS = {
-  verbs:
-    /\b(went to|visited|traveled to|travelled to|lives in|from|works at|moved to|based in)\b/i,
-  locations:
-    /\b(city|country|state|town|village|island|beach|mountain|park|restaurant|cafe|hotel|airport)\b/i,
-};
-
-const INTEREST_PATTERNS = {
-  verbs:
-    /\b(likes|like|enjoys|enjoy|loves|love|plays|play|favorite|favourite|interested in|passionate about)\b/i,
-};
-
-/**
- * Validates and corrects fact type using pattern matching
- *
- * AI sometimes misclassifies facts. This function uses regex patterns to:
- * - Detect dates by keywords, month names, or date formats
- * - Detect places by location-related verbs
- * - Detect interests by preference verbs
- *
- * @param fact - The fact to validate
- * @returns The corrected fact type
- */
-function validateAndCorrectFactType(fact: AIFact): AIFact["type"] {
-  const text = (fact.source_text || fact.value).toLowerCase();
-
-  // Priority 1: Check for date indicators
-  if (
-    DATE_PATTERNS.keywords.test(text) ||
-    DATE_PATTERNS.months.test(text) ||
-    DATE_PATTERNS.dateFormats.test(text)
-  ) {
-    return "important_date";
-  }
-
-  // Priority 2: Check for place indicators
-  if (PLACE_PATTERNS.verbs.test(text)) {
-    return "place";
-  }
-
-  // Priority 3: Check for interest indicators
-  if (INTEREST_PATTERNS.verbs.test(text)) {
-    return "interest";
-  }
-
-  // Default: Keep AI's original classification
-  return fact.type;
-}
-
-/**
  * Transforms AI result format to frontend-compatible format
  *
- * Process:
+ * NEW APPROACH - Preserves compound sentences:
  * 1. Initialize empty arrays for each category
- * 2. Iterate through AI facts array
- * 3. Validate and correct each fact's type
- * 4. Sort fact into appropriate category array
+ * 2. Iterate through AI entries array
+ * 3. If entry has multiple categories, add it to ALL relevant category arrays
+ * 4. This preserves the compound sentence while making it searchable/filterable
  *
- * Why transformation needed:
- * - AI returns array of heterogeneous facts with "type" field
- * - Frontend expects separate arrays for each category
- * - This transformation makes frontend code simpler (no filtering needed)
+ * Why this works better:
+ * - AI returns natural language entries with multiple category tags
+ * - We add the same entry to multiple categories so users can find it
+ * - The compound sentence is preserved exactly as the AI returned it
+ * - No regex chopping, no forced categorization
  *
  * @param aiResult - The validated AI extraction result
  * @param originalText - Optional original text (currently unused, for future enhancements)
@@ -306,37 +224,33 @@ export function transformToFrontendFormat(
     notes: [],
   };
 
-  const facts = aiResult?.payload?.facts || [];
-  for (const fact of facts) {
-    if (!fact || !fact.value) {
+  const entries = aiResult?.payload?.entries || [];
+  for (const entry of entries) {
+    if (!entry || !entry.text) {
       continue;
     }
 
-    // Apply pattern-based type correction
-    const correctedType = validateAndCorrectFactType(fact);
-    const item = { value: fact.value.trim() };
+    const item = { value: entry.text.trim() };
 
-    // Route to appropriate category
-    switch (correctedType) {
-      case "interest":
-        result.interests.push(item);
-        break;
+    // Add entry to ALL categories it belongs to (compound sentences can have multiple)
+    for (const category of entry.categories) {
+      switch (category) {
+        case "interest":
+          result.interests.push(item);
+          break;
 
-      case "important_date":
-        result.importantDates.push(item);
-        break;
+        case "important_date":
+          result.importantDates.push(item);
+          break;
 
-      case "place":
-        result.places.push(item);
-        break;
+        case "place":
+          result.places.push(item);
+          break;
 
-      case "note":
-        result.notes.push(item);
-        break;
-
-      default:
-        // Fallback: Unknown types go to notes
-        result.notes.push(item);
+        case "note":
+          result.notes.push(item);
+          break;
+      }
     }
   }
 
