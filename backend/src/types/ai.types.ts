@@ -1,14 +1,15 @@
-export interface AIEntry {
-  text: string; // Natural language entry - can be compound sentences
-  categories: Array<"interest" | "important_date" | "place" | "note">; // Can have multiple tags
-  source_text: string;
+export interface AIFact {
+  type: "interest" | "important_date" | "place" | "note";
+  label?: string;
+  value: string;
+  source_text?: string;
 }
 
 export interface AIResult {
   intent: string;
   payload: {
-    contact_name?: string;
-    entries: AIEntry[]; // Changed from "facts" to "entries"
+    content_name?: string;
+    facts: AIFact[];
   };
   confidence: number;
   needs_clarification: boolean;
