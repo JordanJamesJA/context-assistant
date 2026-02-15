@@ -19,6 +19,7 @@ import {
   extractFactsFromText,
   transformToFrontendFormat,
 } from "./services/ai.service";
+import { extractRouter } from "./routes/extract.routes.js";
 
 interface ExtractRequest {
   text: string;
@@ -28,11 +29,8 @@ interface ExtractRequest {
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use("/api", extractRouter)
 
-/**
- * Health check endpoint
- * Used to verify server is running
- */
 app.get("/ping", (_req, res) => {
   res.json({
     success: true,
